@@ -84,3 +84,60 @@ def delete_client(client_id: int):
     else:
         raise HTTPException(status_code=404, detail="Client not found")
 
+#Cred Operations for Items
+
+@app.post("/dishes/")
+def create_dish(dish: Dish):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO Dishes (DishTitle, DishPrice) VALUES (?, ?);", (dish.dish_title, dish.dish_price))
+    dish.dish_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return dish
+
+@app.get("/dishes/{dish_id}")
+def get_dish(dish_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DishID, DishTitle, DishPrice FROM Dishes WHERE DishID = ?", (dish_id,))
+    result = cursor.fetchone()
+    conn.close()
+    if result:
+        return Dish(dish_id=result[0], dish_title=result[1], dish_price=result[2])
+    else:
+        raise HTTPException(status_code=404, detail="Dish not found")
+
+@app.put("/dishes/{dish_id}")
+def update_dish(dish_id: int, dish: Dish):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    update_query = "UPDATE Dishes SET "
+    update_data = []
+    if dish.dish_title:
+        update_query += "DishTitle=?, "
+        update_data.append(dish.dish_title)
+    if dish.dish_price is not None:
+        update_query += "DishPrice=? "
+        update_data.append(dish.dish_price)
+    update_query = update_query.rstrip(", ") + "WHERE DishID=?;"
+    update_data.append(dish_id)
+    cursor.execute(update_query, update_data)
+    conn.commit()
+    cursor.execute("SELECT DishID, DishTitle, DishPrice FROM Dishes WHERE DishID = ?", (dish_id,))
+    updated_dish = cursor.fetchone()
+    conn.close()
+    return Dish(dish_id=updated_dish[0], dish_title=updated_dish[1], dish_price=updated_dish[2])
+
+@app.delete("/dishes/{dish_id}")
+def delete_dish(dish_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM Dishes WHERE DishID = ?;", (dish_id,))
+    conn.commit()
+    changes = conn.total_changes
+    conn.close()
+    if changes:
+        return {"message": "Dish deleted successfully"}
+    else:
+        raise HTTPException(status_code=404, detail="Dish not found")
