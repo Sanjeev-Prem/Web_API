@@ -141,3 +141,62 @@ def delete_dish(dish_id: int):
         return {"message": "Dish deleted successfully"}
     else:
         raise HTTPException(status_code=404, detail="Dish not found")
+    
+    #Cred Operations for Orders
+
+@app.post("/orders/")
+def create_order(order: ClientOrder):
+    if order.order_id is not None:
+        raise HTTPException(status_code=400, detail="Order ID should not be set on creation.")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO FoodOrders (Remarks, ClientID, OrderTime) VALUES (?, ?, ?);",
+                   (order.remarks, order.client_id, int(time.time())))
+    order.order_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return order
+
+@app.get("/orders/{order_id}")
+def get_order(order_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT FoodOrderID, Remarks, ClientID, OrderTime FROM FoodOrders WHERE FoodOrderID = ?", (order_id,))
+    result = cursor.fetchone()
+    conn.close()
+    if result:
+        return ClientOrder(order_id=result[0], remarks=result[1], client_id=result[2], order_time=result[3])
+    else:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+@app.put("/orders/{order_id}")
+def update_order(order_id: int, order: ClientOrder):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    update_query = "UPDATE FoodOrders SET "
+    update_data = []
+    if order.remarks:
+        update_query += "Remarks=?, "
+        update_data.append(order.remarks)
+    update_query = update_query.rstrip(", ") + "WHERE FoodOrderID=?;"
+    update_data.append(order_id)
+    cursor.execute(update_query, update_data)
+    conn.commit()
+    cursor.execute("SELECT FoodOrderID, Remarks, ClientID, OrderTime FROM FoodOrders WHERE FoodOrderID = ?", (order_id,))
+    updated_order = cursor.fetchone()
+    conn.close()
+    return ClientOrder(order_id=updated_order[0], remarks=updated_order[1], client_id=updated_order[2], order_time=updated_order[3])
+
+@app.delete("/orders/{order_id}")
+def delete_order(order_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM FoodOrders WHERE FoodOrderID = ?;", (order_id,))
+    conn.commit()
+    changes = conn.total_changes
+    conn.close()
+    if changes:
+        return {"message": "Order deleted successfully"}
+    else:
+        raise HTTPException(status_code=404, detail="Order not found")
+
