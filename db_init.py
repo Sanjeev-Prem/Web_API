@@ -1,78 +1,94 @@
 import sqlite3
 import json
 
-# Connecting to the SQLite database
-database = sqlite3.connect("restaurant_db.sqlite")
-db_cursor = database.cursor()
+# Connect to SQLite database
+conn = sqlite3.connect("db.sqlite")
+curr = conn.cursor()
 
-# Creating database tables with modified names and data types
-db_cursor.execute("""
-CREATE TABLE Clientele (
-    ClientID INTEGER PRIMARY KEY,
-    ClientName VARCHAR(100),
-    PhoneNumber VARCHAR(15)
+# Create tables in the database
+curr.execute("""
+CREATE TABLE customers (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    phone TEXT
 );
 """)
 
-db_cursor.execute("""
-CREATE TABLE Dishes (
-    DishID INTEGER PRIMARY KEY,
-    DishTitle VARCHAR(100),
-    DishPrice DECIMAL(10, 2)
+curr.execute("""
+CREATE TABLE items (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    price REAL
 );
 """)
 
-db_cursor.execute("""
-CREATE TABLE FoodOrders (
-    FoodOrderID INTEGER PRIMARY KEY,
-    ClientRemarks TEXT,
-    LinkedClientID INTEGER,
-    OrderPlacedAt BIGINT,
-    FOREIGN KEY(LinkedClientID) REFERENCES Clientele(ClientID)
+curr.execute("""
+CREATE TABLE orders (
+    id INTEGER PRIMARY KEY,
+    notes TEXT,
+    cust_id INTEGER,
+    timestamp INTEGER,
+    FOREIGN KEY(cust_id) REFERENCES customers(id)
 );
 """)
 
-db_cursor.execute("""
-CREATE TABLE OrderDetails (
-    DetailID INTEGER PRIMARY KEY,
-    LinkedOrderID INTEGER,
-    LinkedDishID INTEGER,
-    FOREIGN KEY(LinkedOrderID) REFERENCES FoodOrders(FoodOrderID),
-    FOREIGN KEY(LinkedDishID) REFERENCES Dishes(DishID)
+curr.execute("""
+CREATE TABLE order_list (
+    id INTEGER PRIMARY KEY,
+    order_id INTEGER,
+    item_id INTEGER,
+    FOREIGN KEY(order_id) REFERENCES orders(id),
+    FOREIGN KEY(item_id) REFERENCES items(id)
 );
 """)
 
-# Load and insert data from JSON file
+# Load data from JSON file
 with open('example_orders.json', 'r') as file:
-    order_data = json.load(file)
+    order_list = json.load(file)
 
-clients = {}
-dishes = {}
+# Dictionary to hold customers and items to avoid duplicates
+customers = {}
+items = {}
 
-for order in order_data:
-    clients[order["phone"]] = order["name"]
+# Process orders from JSON data
+for order in order_list:
+    customers[order["phone"]] = order["name"]
     for item in order["items"]:
-        if item["name"] not in dishes:
-            dishes[item["name"]] = item["price"]
+        items[item["name"]] = item["price"]
 
-for phone, name in clients.items():
-    db_cursor.execute("INSERT INTO Clientele (ClientName, PhoneNumber) VALUES (?, ?);", (name, phone))
+# Insert data into the customers table
+for phone, name in customers.items():
+    curr.execute("INSERT INTO customers (name, phone) VALUES (?, ?)", (name, phone))
 
-for dish_name, price in dishes.items():
-    db_cursor.execute("INSERT INTO Dishes (DishTitle, DishPrice) VALUES (?, ?);", (dish_name, price))
+# Fetch and print all customers to verify insertion
+curr.execute("SELECT * FROM customers")
+print("Customers:")
+print(curr.fetchall())
 
-for order in order_data:
-    db_cursor.execute("SELECT ClientID FROM Clientele WHERE PhoneNumber=?;", (order["phone"],))
-    client_id = db_cursor.fetchone()[0]
-    db_cursor.execute("INSERT INTO FoodOrders (ClientRemarks, OrderPlacedAt, LinkedClientID) VALUES (?, ?, ?);",
-                      (order["notes"], order["timestamp"], client_id))
-    order_id = db_cursor.lastrowid
+# Insert data into the items table
+for name, price in items.items():
+    curr.execute("INSERT INTO items (name, price) VALUES (?, ?)", (name, price))
+
+# Process each order and its associated items
+for order in order_list:
+    # Fetch the customer ID based on phone number
+    curr.execute("SELECT id FROM customers WHERE phone = ?", (order["phone"],))
+    cust_id = curr.fetchone()[0]
+
+    # Insert the order into the orders table
+    curr.execute("INSERT INTO orders (notes, timestamp, cust_id) VALUES (?, ?, ?)",
+                 (order["notes"], order["timestamp"], cust_id))
+    order_id = curr.lastrowid
+
+    # Insert items into the order_list table
     for item in order["items"]:
-        db_cursor.execute("SELECT DishID FROM Dishes WHERE DishTitle=?;", (item["name"],))
-        dish_id = db_cursor.fetchone()[0]
-        db_cursor.execute("INSERT INTO OrderDetails (LinkedOrderID, LinkedDishID) VALUES (?, ?);",
-                          (order_id, dish_id))
+        curr.execute("SELECT id FROM items WHERE name = ?", (item["name"],))
+        item_id = curr.fetchone()[0]
+        curr.execute("INSERT INTO order_list (order_id, item_id) VALUES (?, ?)", 
+                     (order_id, item_id))
 
-# Commit changes and close the database connection
-database.commit()
-database.close()
+# Commit the transactions
+conn.commit()
+
+# Close the database connection
+conn.close()
